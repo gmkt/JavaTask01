@@ -3,10 +3,11 @@ package ru.ifmo.rain.telnoj.walk;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
 
 public class Walker {
     public static void main(String[] args) {
-        if (args.length != 2) {
+        if (args == null || args.length != 2 || args[0] == null || args[1] == null) {
             System.out.println("usage: java <class> <input> <output>");
         } else {
             try {
@@ -21,7 +22,7 @@ public class Walker {
                         String c = reader.readLine();
                         while (c != null) {
                             try {
-                                recursiveHash(writer, c);
+                                writeFileTreeHash(writer, c);
                             } catch (IOException e) {
                                 error("Unable to write in file `" + args[1] + "`");
                             }
@@ -45,18 +46,24 @@ public class Walker {
         }
     }
 
-    private static void recursiveHash(BufferedWriter writer, String fileName) throws IOException {
+    private static void writeFileTreeHash(BufferedWriter writer, String fileName) throws IOException {
         try {
-            Path filePath = Paths.get(fileName);
-            if (!filePath.toFile().isDirectory()) writeHash(writer, getHashFromFile(fileName), fileName);
-            else {
-                try (DirectoryStream<Path> stream = Files.newDirectoryStream(filePath)) {
-                    for (Path file : stream) {
-                        recursiveHash(writer, file.toString());
-                    }
+            Files.walkFileTree(Paths.get(fileName), new SimpleFileVisitor<Path>() {
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
+                    writeHash(writer, 0, file.toString());
+                    return FileVisitResult.CONTINUE;
                 }
-            }
-        } catch (InvalidPathException | IOException e) {
+
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attr) throws IOException {
+                    if (attr.isRegularFile()) {
+                        writeHash(writer, getHashFromFile(file), file.toString());
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (InvalidPathException e) {
             writeHash(writer, 0, fileName);
             error("Invalid format of input file `" + fileName + "`");
         }
@@ -67,9 +74,9 @@ public class Walker {
         writer.newLine();
     }
 
-    private static int getHashFromFile(String fileName) {
+    private static int getHashFromFile(Path filePath) {
         int hash = 0x811c9dc5;
-        try (BufferedInputStream input = new BufferedInputStream(new FileInputStream(fileName))) {
+        try (BufferedInputStream input = new BufferedInputStream(new FileInputStream(filePath.toFile()))) {
             int s, primeVal = 0x01000193;
             while ((s = input.read()) != -1) {
                 hash = (hash * primeVal) ^ (s & 0xff);
